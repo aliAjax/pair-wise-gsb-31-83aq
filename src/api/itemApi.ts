@@ -1,97 +1,101 @@
-import { ItemCondition, ItemStatus } from '@/constants/item';
+import { ItemStatus } from '@/constants/item';
+import { OperationType } from '@/models/operationLog';
 import type { Item, ItemDraft } from '@/models/item';
+import type { CatalogSnapshot } from '@/types';
 
-import { storage, STORAGE_KEYS } from '@/utils/storage';
+import { catalogApi } from './catalogApi';
+import { operationApi } from './operationApi';
+import { sessionApi } from './sessionApi';
+import { PermissionDeniedError } from '@/utils/errors';
+import { storage } from '@/utils/storage';
 
-const seedItems: Item[] = [
-  {
-    id: 'item_camera',
-    user_id: 'user_lin',
-    title: '富士拍立得 Mini 旧机',
-    description: '成色干净，附一包相纸，想换小型蓝牙音箱或桌面灯。',
-    category: '数码',
-    condition: ItemCondition.GOOD,
-    images: [],
-    status: ItemStatus.AVAILABLE,
-    location: '杭州 · 西湖',
-    created_at: new Date().toISOString(),
-  },
-  {
-    id: 'item_books',
-    user_id: 'user_chen',
-    title: '设计与产品书 6 本',
-    description: '搬家清书柜，适合产品/视觉入门，接受换绿植、咖啡器具。',
-    category: '书籍',
-    condition: ItemCondition.LIKE_NEW,
-    images: [],
-    status: ItemStatus.AVAILABLE,
-    location: '苏州 · 工业园',
-    created_at: new Date(Date.now() - 1000 * 60 * 60 * 26).toISOString(),
-  },
-  {
-    id: 'item_chair',
-    user_id: 'user_me',
-    title: '可折叠露营椅',
-    description: '去年买的，露营两次，有轻微使用痕迹，想换收纳盒。',
-    category: '运动',
-    condition: ItemCondition.GOOD,
-    images: [],
-    status: ItemStatus.AVAILABLE,
-    location: '上海 · 徐汇',
-    created_at: new Date(Date.now() - 1000 * 60 * 60 * 3).toISOString(),
-  },
-  {
-    id: 'item_lamp',
-    user_id: 'user_lin',
-    title: '木质小夜灯',
-    description: '暖光，适合床头。已完成交换，保留记录用于状态展示。',
-    category: '家居',
-    condition: ItemCondition.LIKE_NEW,
-    images: [],
-    status: ItemStatus.EXCHANGED,
-    location: '杭州 · 西湖',
-    created_at: new Date(Date.now() - 1000 * 60 * 60 * 90).toISOString(),
-  },
-];
+// 同作用域 CAS 冲突时按最新 revision 重试有限次。
+const retryScoped = async <T>(
+  kind: 'items',
+  userId: string,
+  apply: (rows: T[]) => T[],
+  retries = 3,
+): Promise<void> => {
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    const collection = await storage.getScoped<T>(kind, userId);
+    try {
+      await storage.compareSetScoped<T>(kind, userId, collection.revision, apply);
+      return;
+    } catch (error) {
+      if (attempt === retries) throw error;
+    }
+  }
+};
 
 export const itemApi = {
-  async list(): Promise<Item[]> {
-    const items = await storage.get<Item[]>(STORAGE_KEYS.items, []);
-    if (items.length) return items;
-    await storage.set(STORAGE_KEYS.items, seedItems);
-    return seedItems;
+  // 我发布的物品：只读本账号作用域。
+  async listMine(sessionId: string): Promise<Item[]> {
+    const session = await sessionApi.assert(sessionId);
+    const collection = await storage.getScoped<Item>('items', session.userId);
+    return collection.rows;
   },
 
-  async detail(id: string): Promise<Item | undefined> {
-    const items = await this.list();
-    return items.find((item) => item.id === id);
+  // 浏览详情：会话校验后从统一目录取，首页与详情看到的数据口径一致。
+  async detail(sessionId: string, id: string): Promise<Item | undefined> {
+    const snapshot = await catalogApi.snapshot(sessionId);
+    return snapshot.items.find((item) => item.id === id);
   },
 
-  async create(draft: ItemDraft): Promise<Item> {
-    const items = await this.list();
+  async create(sessionId: string, draft: ItemDraft): Promise<Item> {
+    const session = await sessionApi.assertOwner(sessionId, draft.user_id);
+    const collection = await storage.getScoped<Item>('items', session.userId);
     const nextItem: Item = {
       ...draft,
       id: storage.createId('item'),
       status: draft.status ?? ItemStatus.AVAILABLE,
       created_at: new Date().toISOString(),
     };
-    await storage.set(STORAGE_KEYS.items, [nextItem, ...items]);
+    await storage.compareSetScoped<Item>('items', session.userId, collection.revision, (rows) => [
+      nextItem,
+      ...rows,
+    ]);
+    catalogApi.invalidate();
+    await operationApi.record(sessionId, OperationType.ITEM_PUBLISH, `发布物品「${nextItem.title}」`);
     return nextItem;
   },
 
-  async update(id: string, patch: Partial<Item>): Promise<Item> {
-    const items = await this.list();
-    const current = items.find((item) => item.id === id);
-    if (!current) throw new Error('物品不存在');
-    const nextItem = { ...current, ...patch };
-    await storage.set(
-      STORAGE_KEYS.items,
-      items.map((item) => (item.id === id ? nextItem : item)),
+  async update(sessionId: string, id: string, patch: Partial<Item>): Promise<Item> {
+    const session = await sessionApi.assert(sessionId);
+    const collection = await storage.getScoped<Item>('items', session.userId);
+    const current = collection.rows.find((item) => item.id === id);
+    // 越权请求直接拒绝：不在本人作用域内的物品不允许改。
+    if (!current) throw new PermissionDeniedError();
+    const nextItem: Item = { ...current, ...patch, id: current.id, user_id: current.user_id };
+    await storage.compareSetScoped<Item>('items', session.userId, collection.revision, (rows) =>
+      rows.map((item) => (item.id === id ? nextItem : item)),
     );
+    catalogApi.invalidate();
     return nextItem;
   },
 
-  async setStatus(id: string, status: ItemStatus): Promise<Item> {
-    return this.update(id, { status });
+  async setStatus(sessionId: string, id: string, status: ItemStatus): Promise<Item> {
+    const item = await this.update(sessionId, id, { status });
+    await operationApi.record(sessionId, OperationType.ITEM_OFFLINE, `下架物品「${item.title}」`);
+    return item;
+  },
+
+  // 交换完成时联动两件物品：可能横跨本人与对方两个作用域，
+  // 仅允许 exchangeApi 在完成动作（已做归属校验）后内部调用。
+  async applyExchanged(
+    sessionId: string,
+    itemIds: string[],
+    snapshot: CatalogSnapshot,
+  ): Promise<void> {
+    await sessionApi.assert(sessionId);
+    for (const itemId of itemIds) {
+      const owner = snapshot.items.find((item) => item.id === itemId);
+      if (!owner || owner.status === ItemStatus.EXCHANGED) continue;
+      await retryScoped<Item>('items', owner.user_id, (rows) =>
+        rows.map((item) =>
+          item.id === itemId ? { ...item, status: ItemStatus.EXCHANGED } : item,
+        ),
+      );
+    }
+    catalogApi.invalidate();
   },
 };

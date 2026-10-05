@@ -27,6 +27,6 @@ export const ITEM_CONDITION_OPTIONS = [
 export const ITEM_CATEGORIES = ['全部', '数码', '书籍', '家居', '服饰', '运动', '玩具', '其他'];
 
 export const ITEM_STORAGE_HINTS = {
-  statusKey: 'reswap:items',
+  statusKey: 'reswap:scope:items:{userId}',
   statusTouchedBy: ['models/item.ts', 'stores/itemStore.ts', 'components/common/ItemCard.vue', 'pages/ItemDetail.vue'],
 };

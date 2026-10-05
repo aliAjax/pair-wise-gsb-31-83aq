@@ -670,3 +670,66 @@ textarea {
     min-height: 280px;
   }
 }
+
+.migration-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 10px 14px;
+  border: 1px solid #e0a106;
+  border-radius: 10px;
+  background: #fff7e0;
+  color: #7a5700;
+  font-size: 14px;
+}
+
+.migration-banner button {
+  border: 0;
+  border-radius: 8px;
+  padding: 6px 14px;
+  background: #e0a106;
+  color: #fff;
+  cursor: pointer;
+}
+
+.migration-banner button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.my-operations {
+  margin-top: 28px;
+}
+
+.operation-list {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.operation-list li {
+  display: grid;
+  grid-template-columns: 88px 1fr auto;
+  align-items: baseline;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(120, 120, 140, 0.18);
+  border-radius: 10px;
+}
+
+.operation-list__label {
+  font-weight: 600;
+}
+
+.operation-list__detail {
+  color: rgba(40, 40, 55, 0.72);
+}
+
+.operation-list time {
+  font-size: 12px;
+  color: rgba(40, 40, 55, 0.5);
+}

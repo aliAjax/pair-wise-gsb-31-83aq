@@ -4,10 +4,14 @@ import { useAuthStore } from '@/stores/authStore';
 
 export const useAuth = () => {
   const store = useAuthStore();
-  const refs = storeToRefs(store);
+  const { currentUser, users, sessionId, isLoggedIn } = storeToRefs(store);
   return {
-    ...refs,
+    currentUser,
+    users,
+    sessionId,
+    isLoggedIn,
     login: store.login,
     updateProfile: store.updateProfile,
+    hydrate: store.hydrate,
   };
 };

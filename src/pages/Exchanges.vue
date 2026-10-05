@@ -34,7 +34,7 @@
         :users="authStore.users"
         @accept="exchangeStore.accept"
         @reject="exchangeStore.reject"
-        @complete="completeExchange"
+        @complete="exchangeStore.complete"
       />
     </div>
     <EmptyState
@@ -51,7 +51,7 @@ import { computed, ref } from 'vue';
 
 import EmptyState from '@/components/common/EmptyState.vue';
 import ExchangeCard from '@/components/common/ExchangeCard.vue';
-import { EXCHANGE_STATUS_OPTIONS, ExchangeStatus } from '@/constants/exchange';
+import { EXCHANGE_STATUS_OPTIONS } from '@/constants/exchange';
 import { PAGE_MESSAGES } from '@/constants/messages';
 import { useExchangeStats } from '@/hooks/useExchangeStats';
 import { useAuthStore } from '@/stores/authStore';
@@ -71,12 +71,6 @@ const mine = computed(() => {
     : list.filter((item) => item.status === exchangeStore.statusFilter);
 });
 const visibleExchanges = computed(() => mine.value);
-const stats = useExchangeStats(() => exchangeStore.exchanges);
-
-const completeExchange = async (id: string) => {
-  await exchangeStore.complete(id);
-  itemStore.items = itemStore.items.map((item) => item);
-};
-
-void ExchangeStatus.PENDING;
+// 统计口径与列表一致：只统计当前账号作用域内的交换请求。
+const stats = useExchangeStats(() => mine.value);
 </script>

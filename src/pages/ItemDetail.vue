@@ -104,5 +104,4 @@ const requestExchange = async () => {
 const offlineItem = async () => {
   if (!item.value) return;
   await itemStore.offline(item.value.id);
-};
-</script>
+};</script>

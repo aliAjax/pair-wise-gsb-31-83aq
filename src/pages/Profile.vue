@@ -55,6 +55,19 @@
       </div>
       <EmptyState v-else title="还没有发布物品" description="发布一件闲置后会出现在这里" mark="物" />
     </section>
+
+    <section class="my-operations">
+      <h2>操作记录</h2>
+      <p class="form-note">仅当前账号可见，切换账号后读取各账号自己的记录。</p>
+      <ul v-if="operationLogs.length" class="operation-list">
+        <li v-for="log in operationLogs" :key="log.id">
+          <span class="operation-list__label">{{ operationLabel(log.type) }}</span>
+          <span class="operation-list__detail">{{ log.detail }}</span>
+          <time>{{ formatDate(log.created_at) }}</time>
+        </li>
+      </ul>
+      <EmptyState v-else title="暂无操作记录" description="发布物品或处理交换后会记录在这里" mark="档" />
+    </section>
   </section>
 </template>
 
@@ -66,12 +79,19 @@ import EmptyState from '@/components/common/EmptyState.vue';
 import ItemCard from '@/components/common/ItemCard.vue';
 import UserBrief from '@/components/common/UserBrief.vue';
 import { ItemStatus } from '@/constants/item';
+import { OPERATION_LABEL_MAP } from '@/constants/messages';
 import { useAuth } from '@/hooks/useAuth';
 import { useItemStore } from '@/stores/itemStore';
+import { useOperationLogs } from '@/hooks/useOperationLogs';
+import { formatDate } from '@/utils/formatters';
+import { OperationType } from '@/models/operationLog';
 
-const { currentUser, users, login, updateProfile } = useAuth();
+const { currentUser, users, sessionId, login, updateProfile } = useAuth();
 const itemStore = useItemStore();
 const selectedUserId = ref('');
+const { logs: operationLogs } = useOperationLogs(sessionId);
+
+const operationLabel = (type: OperationType) => OPERATION_LABEL_MAP[type] ?? '操作';
 
 const form = reactive({
   nickname: '',

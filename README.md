@@ -49,16 +49,16 @@ pnpm build
 
 ```text
 src/
-├── api/              # userApi.ts, itemApi.ts, exchangeApi.ts：本地数据 API 层
-├── stores/           # authStore.ts, itemStore.ts, exchangeStore.ts, themeStore.ts
-├── models/           # user.ts, item.ts, exchange.ts：独立数据模型
-├── types/            # 共享类型补充
-├── components/common/# 共享业务组件和 GlobalErrorBoundary
-├── hooks/            # useAuth.ts, useLocalStorage.ts, useExchangeStats.ts
+├── api/              # userApi/sessionApi/itemApi/exchangeApi/operationApi/catalogApi/migrationApi
+├── stores/           # authStore, itemStore, exchangeStore, themeStore, migrationStore
+├── models/           # user.ts, item.ts, exchange.ts, operationLog.ts：独立数据模型
+├── types/            # 共享类型补充（ScopedCollection / SessionInfo / CatalogSnapshot 等）
+├── components/common/# 共享业务组件、GlobalErrorBoundary、MigrationBanner
+├── hooks/            # useAuth.ts, useLocalStorage.ts, useExchangeStats.ts, useOperationLogs.ts
 ├── pages/            # Home, ItemDetail, Publish, Exchanges, Profile
 ├── router/           # index.ts + guards.ts
-├── utils/            # storage.ts, formatters.ts, validators.ts, message.ts, themeUtils.ts
-├── constants/        # item.ts, exchange.ts, themes.ts, messages.ts
+├── utils/            # storage.ts（作用域 key + CAS）, errors.ts, formatters.ts, validators.ts, message.ts, themeUtils.ts
+├── constants/        # item.ts, exchange.ts, themes.ts, messages.ts, seed.ts
 ├── App.vue
 ├── main.ts
 └── styles.css
@@ -70,6 +70,33 @@ src/
 - 所有 `api/*Api.ts` 通过 `storage.ts` 读写数据，不在组件里直接写业务数据。
 - 存储层包含序列化、版本号、过期清理、存储 key 管理。
 - 首次启动会写入演示用户、物品和交换请求。
+
+### 用户作用域与会话隔离
+
+- 私人物品、交换请求、操作记录全部按用户作用域存储，key 形如
+  `reswap:scope:items:{userId}`、`reswap:scope:exchanges:{userId}`、`reswap:scope:operations:{userId}`，
+  每个作用域带 `revision`，写入采用 compare-and-set：revision 与最新值不一致即拒绝，
+  旧标签页基于旧结果的提交不会覆盖新结果。
+- 当前会话保存在 `reswap:current-session`（`userId + sessionId + startedAt`）。
+  每次登录/切换账号都会生成全新 `sessionId`；所有读写都经 `api/sessionApi.ts`
+  先校验会话，会话过期抛 `SessionStaleError`，归属不符抛 `PermissionDeniedError`，
+  revision 冲突抛 `ConflictError`，越权请求直接拒绝。
+- 交换请求在发起方与收到方两个作用域各存一份：同意/拒绝仅收到方可操作，完成仅发起方可操作。
+- `api/catalogApi.ts` 是首页与交换列表的唯一读取来源，同一次水合复用同一快照 Promise，
+  写操作后统一失效并重建，保证「迁移后首页与交换列表读取同一结果」。
+- 跨标签页通过 `storage` 事件订阅会话变更：其他标签页登录/切换账号后，本页自动
+  切到最新账号作用域并提示，旧会话上的后续写入被拒绝。
+- 旧的全局数据（`reswap:items`、`reswap:exchanges`）由 `api/migrationApi.ts`
+  按 `user_id` / 双方归属拆分迁移到各用户作用域，迁移状态记录在
+  `reswap:migration-v2`，按 id 幂等合并（较新 `updated_at` 优先），失败后首页横幅可点击重试，
+  迁移成功后删除旧 key。全新安装则把演示数据种入各自作用域。
+
+### 行为验证脚本
+
+```bash
+npm run verify         # 会话隔离 / 越权拒绝 / CAS 冲突 / 同源快照 / 操作记录隔离
+npm run verify:legacy  # 旧版全局数据按归属迁移、双方作用域正确、旧 key 清理
+```
 
 ## 横切关注点
 
