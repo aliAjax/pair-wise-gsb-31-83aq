@@ -62,7 +62,6 @@ import { RouterLink, useRoute } from 'vue-router';
 import EmptyState from '@/components/common/EmptyState.vue';
 import ItemImageGallery from '@/components/common/ItemImageGallery.vue';
 import UserBrief from '@/components/common/UserBrief.vue';
-import { ExchangeStatus } from '@/constants/exchange';
 import { ItemStatus } from '@/constants/item';
 import { useAuthStore } from '@/stores/authStore';
 import { useExchangeStore } from '@/stores/exchangeStore';
@@ -85,24 +84,26 @@ const selectedItemId = ref('');
 const messageText = ref('我想用这件闲置与你交换，可以沟通时间和地点。');
 
 const requestExchange = async () => {
-  if (!authStore.currentUser || !item.value || !owner.value) return;
-  if (!itemStore.assertCanExchange(authStore.currentUser.id)) return;
+  if (!authStore.sessionState || !item.value || !owner.value) {
+    message('登录状态已失效，请重新登录', 'error');
+    return;
+  }
+  if (!itemStore.assertCanExchange(authStore.sessionState.userId)) return;
   if (!selectedItemId.value) {
     message('请选择一件自己的物品', 'error');
     return;
   }
   await exchangeStore.create({
-    from_user_id: authStore.currentUser.id,
+    from_user_id: authStore.sessionState.userId,
     to_user_id: owner.value.id,
     from_item_id: selectedItemId.value,
     to_item_id: item.value.id,
-    status: ExchangeStatus.PENDING,
     message: messageText.value,
   });
 };
 
 const offlineItem = async () => {
   if (!item.value) return;
-  await itemStore.offline(item.value.id);
+  await itemStore.offline(item.value.id, item.value.revision);
 };
 </script>

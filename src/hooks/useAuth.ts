@@ -9,5 +9,6 @@ export const useAuth = () => {
     ...refs,
     login: store.login,
     updateProfile: store.updateProfile,
+    hydrate: store.hydrate,
   };
 };

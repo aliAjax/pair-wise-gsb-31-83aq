@@ -12,7 +12,9 @@ export const setupRouterGuards = (router: Router) => {
     const authStore = useAuthStore();
     const itemStore = useItemStore();
     const exchangeStore = useExchangeStore();
-    if (!authStore.currentUser) {
+
+    // 刷新直达时 App 尚未挂载，先确保按最新会话完成一次读取。
+    if (!authStore.sessionState) {
       await authStore.hydrate();
     }
     if (!itemStore.items.length) {

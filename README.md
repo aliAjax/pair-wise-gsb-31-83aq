@@ -51,25 +51,32 @@ pnpm build
 src/
 ├── api/              # userApi.ts, itemApi.ts, exchangeApi.ts：本地数据 API 层
 ├── stores/           # authStore.ts, itemStore.ts, exchangeStore.ts, themeStore.ts
-├── models/           # user.ts, item.ts, exchange.ts：独立数据模型
-├── types/            # 共享类型补充
+├── models/           # user.ts, item.ts, exchange.ts, operationLog.ts：独立数据模型
+├── types/            # 共享类型补充（SessionState / MigrationState / ScopeKind）
 ├── components/common/# 共享业务组件和 GlobalErrorBoundary
-├── hooks/            # useAuth.ts, useLocalStorage.ts, useExchangeStats.ts
+├── hooks/            # useAuth.ts, useSessionSync.ts, useLocalStorage.ts, useExchangeStats.ts
 ├── pages/            # Home, ItemDetail, Publish, Exchanges, Profile
 ├── router/           # index.ts + guards.ts
-├── utils/            # storage.ts, formatters.ts, validators.ts, message.ts, themeUtils.ts
+├── utils/            # storage.ts, session.ts, errors.ts, formatters.ts, validators.ts, message.ts, themeUtils.ts
 ├── constants/        # item.ts, exchange.ts, themes.ts, messages.ts
 ├── App.vue
 ├── main.ts
 └── styles.css
 ```
 
+> 会话隔离相关：`utils/session.ts`（nonce 校验）、`utils/errors.ts`（`SessionError`/`PermissionError`）、`api/migrationApi.ts`（旧数据迁移与重试）、`stores/migrationStore.ts`、`stores/operationStore.ts`。
+
 ## 数据持久化说明
 
-- `utils/storage.ts` 统一封装 localStorage 和 IndexedDB。
+- `utils/storage.ts` 统一封装 localStorage 和 IndexedDB，并提供按 key 串行的 `update`（读-改-写）与作用域键 `scope:{kind}`。
 - 所有 `api/*Api.ts` 通过 `storage.ts` 读写数据，不在组件里直接写业务数据。
-- 存储层包含序列化、版本号、过期清理、存储 key 管理。
-- 首次启动会写入演示用户、物品和交换请求。
+- 存储层包含序列化、版本号（当前 v2）、过期清理、存储 key 管理。
+- **按用户作用域隔离**：私人物品 `reswap:scope:{userId}:items`、交换请求 `reswap:scope:{userId}:exchanges`、操作记录 `reswap:scope:{userId}:logs`。交换请求在双方作用域各存一份；首页/交换列表读取同一套聚合结果。
+- **会话校验**：会话为 `{ userId, nonce, loggedInAt }`（`reswap:session`）。每次登录刷新 `nonce`，所有写操作都经 `utils/session.ts` 的 `assert` 校验最新会话与归属，越权请求与旧标签页（旧 nonce）写回直接抛出 `SessionError` / `PermissionError`。
+- **提交不被旧结果覆盖**：物品与交换请求带单调递增的 `revision`；提交时携带页面看到的版本号，存储中已更新则拒绝；聚合时同一 id 取 `revision` 更大的结果。
+- **跨标签页**：监听 `storage` 事件，其他标签页切换账号后本页立即同步最新会话并重载数据。
+- **v1 → v2 迁移**：`api/migrationApi.ts` 把旧的全局 `items` / `exchanges` 按归属迁入各用户作用域，旧 `current-user-id` 升级为带 nonce 的会话；迁移失败会显示提示条，可一键重试（重入且按 revision 合并不重复）。
+- 首次启动（迁移后若无作用域数据）会写入演示用户、物品和交换请求。
 
 ## 横切关注点
 

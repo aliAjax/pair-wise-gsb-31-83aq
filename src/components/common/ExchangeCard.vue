@@ -20,13 +20,13 @@
     <footer>
       <span v-if="fromUser && toUser">{{ fromUser.nickname }} → {{ toUser.nickname }}</span>
       <div v-if="canOperate" class="exchange-card__actions">
-        <button v-if="exchange.status === ExchangeStatus.PENDING" type="button" @click="$emit('accept', exchange.id)">
+        <button v-if="exchange.status === ExchangeStatus.PENDING" type="button" @click="$emit('accept', exchange.id, exchange.revision)">
           同意
         </button>
-        <button v-if="exchange.status === ExchangeStatus.PENDING" type="button" @click="$emit('reject', exchange.id)">
+        <button v-if="exchange.status === ExchangeStatus.PENDING" type="button" @click="$emit('reject', exchange.id, exchange.revision)">
           拒绝
         </button>
-        <button v-if="exchange.status === ExchangeStatus.ACCEPTED" type="button" @click="$emit('complete', exchange.id)">
+        <button v-if="exchange.status === ExchangeStatus.ACCEPTED" type="button" @click="$emit('complete', exchange.id, exchange.revision)">
           完成
         </button>
       </div>
@@ -51,9 +51,9 @@ const props = defineProps<{
 }>();
 
 defineEmits<{
-  accept: [id: string];
-  reject: [id: string];
-  complete: [id: string];
+  accept: [id: string, revision: number];
+  reject: [id: string, revision: number];
+  complete: [id: string, revision: number];
 }>();
 
 const authStore = useAuthStore();

@@ -20,6 +20,6 @@ export const EXCHANGE_ACTION_FLOW: Record<ExchangeStatus, ExchangeStatus[]> = {
 };
 
 export const EXCHANGE_STORAGE_HINTS = {
-  statusKey: 'reswap:exchanges',
+  statusKey: 'reswap:scope:{userId}:exchanges',
   statusTouchedBy: ['models/exchange.ts', 'stores/exchangeStore.ts', 'components/common/ExchangeCard.vue'],
 };

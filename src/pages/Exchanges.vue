@@ -34,7 +34,7 @@
         :users="authStore.users"
         @accept="exchangeStore.accept"
         @reject="exchangeStore.reject"
-        @complete="completeExchange"
+        @complete="exchangeStore.complete"
       />
     </div>
     <EmptyState
@@ -51,7 +51,7 @@ import { computed, ref } from 'vue';
 
 import EmptyState from '@/components/common/EmptyState.vue';
 import ExchangeCard from '@/components/common/ExchangeCard.vue';
-import { EXCHANGE_STATUS_OPTIONS, ExchangeStatus } from '@/constants/exchange';
+import { EXCHANGE_STATUS_OPTIONS } from '@/constants/exchange';
 import { PAGE_MESSAGES } from '@/constants/messages';
 import { useExchangeStats } from '@/hooks/useExchangeStats';
 import { useAuthStore } from '@/stores/authStore';
@@ -63,20 +63,25 @@ const itemStore = useItemStore();
 const exchangeStore = useExchangeStore();
 const tab = ref<'sent' | 'received'>('sent');
 
+// 列表与统计共用同一份“当前用户相关”的交换结果，迁移后口径一致。
 const mine = computed(() => {
   if (!authStore.currentUser) return [];
-  const list = tab.value === 'sent' ? exchangeStore.sent(authStore.currentUser.id) : exchangeStore.received(authStore.currentUser.id);
+  const list =
+    tab.value === 'sent'
+      ? exchangeStore.sent(authStore.currentUser.id)
+      : exchangeStore.received(authStore.currentUser.id);
   return exchangeStore.statusFilter === 'all'
     ? list
     : list.filter((item) => item.status === exchangeStore.statusFilter);
 });
 const visibleExchanges = computed(() => mine.value);
-const stats = useExchangeStats(() => exchangeStore.exchanges);
-
-const completeExchange = async (id: string) => {
-  await exchangeStore.complete(id);
-  itemStore.items = itemStore.items.map((item) => item);
-};
-
-void ExchangeStatus.PENDING;
+const stats = useExchangeStats(() =>
+  authStore.currentUser
+    ? exchangeStore.exchanges.filter(
+        (item) =>
+          item.from_user_id === authStore.currentUser?.id ||
+          item.to_user_id === authStore.currentUser?.id,
+      )
+    : [],
+);
 </script>

@@ -1,66 +1,54 @@
 import type { User, UserDraft } from '@/models/user';
 
 import { storage, STORAGE_KEYS } from '@/utils/storage';
+import { session } from '@/utils/session';
 
-const seedUsers: User[] = [
-  {
-    id: 'user_me',
-    nickname: '青禾',
-    avatar: '',
-    phone: '13800000001',
-    location: '上海 · 徐汇',
-    credit_score: 92,
-    created_at: new Date().toISOString(),
-  },
-  {
-    id: 'user_lin',
-    nickname: '林小雨',
-    avatar: '',
-    phone: '13800000002',
-    location: '杭州 · 西湖',
-    credit_score: 86,
-    created_at: new Date().toISOString(),
-  },
-  {
-    id: 'user_chen',
-    nickname: '陈木木',
-    avatar: '',
-    phone: '13800000003',
-    location: '苏州 · 工业园',
-    credit_score: 78,
-    created_at: new Date().toISOString(),
-  },
-];
+import { seedUsers } from './seedData';
 
 export const userApi = {
+  seedUsers,
+
   async list(): Promise<User[]> {
     const users = await storage.get<User[]>(STORAGE_KEYS.users, []);
     if (users.length) return users;
     await storage.set(STORAGE_KEYS.users, seedUsers);
-    await storage.set(STORAGE_KEYS.currentUserId, seedUsers[0].id);
-    return seedUsers;
+    return seedUsers.map((user) => ({ ...user }));
   },
 
-  async current(): Promise<User> {
+  /** 迁移 / 初始化专用：直接写入用户表。 */
+  async writeAll(users: User[]): Promise<void> {
+    await storage.set(STORAGE_KEYS.users, users);
+  },
+
+  async current(): Promise<User | null> {
+    const state = await session.read();
+    if (!state) return null;
     const users = await this.list();
-    const currentUserId = await storage.get<string>(STORAGE_KEYS.currentUserId, seedUsers[0].id);
-    return users.find((user) => user.id === currentUserId) ?? users[0];
+    return users.find((user) => user.id === state.userId) ?? null;
   },
 
+  /** 登录：校验用户存在后刷新会话（新 nonce），旧标签页的提交会被拒绝。 */
   async login(userId: string): Promise<User> {
     const users = await this.list();
     const user = users.find((item) => item.id === userId);
     if (!user) throw new Error('用户不存在');
-    await storage.set(STORAGE_KEYS.currentUserId, user.id);
+    await session.login(user.id);
     return user;
   },
 
+  /** 修改资料：先按最新会话校验归属，防止旧账号写回他人资料。 */
   async updateCurrent(draft: Partial<UserDraft>): Promise<User> {
+    const state = await session.read();
+    if (!state) throw new Error('登录状态已失效，请重新登录');
+    await session.assert(state);
     const users = await this.list();
-    const current = await this.current();
+    const current = users.find((user) => user.id === state.userId);
+    if (!current) throw new Error('用户不存在');
     const nextUser: User = { ...current, ...draft };
-    const nextUsers = users.map((item) => (item.id === current.id ? nextUser : item));
-    await storage.set(STORAGE_KEYS.users, nextUsers);
+    await storage.set(
+      STORAGE_KEYS.users,
+      users.map((item) => (item.id === current.id ? nextUser : item)),
+    );
     return nextUser;
   },
 };

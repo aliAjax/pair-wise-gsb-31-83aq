@@ -55,6 +55,19 @@
       </div>
       <EmptyState v-else title="还没有发布物品" description="发布一件闲置后会出现在这里" mark="物" />
     </section>
+
+    <section class="my-logs">
+      <h2>操作记录</h2>
+      <p class="form-note">仅展示当前账号作用域内的操作，切换账号后互不可见。</p>
+      <ul v-if="operationStore.logs.length" class="log-list">
+        <li v-for="log in operationStore.logs" :key="log.id">
+          <span class="log-action">{{ log.action }}</span>
+          <span class="log-detail">{{ log.detail }}</span>
+          <time>{{ formatDate(log.created_at) }}</time>
+        </li>
+      </ul>
+      <EmptyState v-else title="暂无操作记录" description="发布、下架或处理交换请求后会记录在这里" mark="记" />
+    </section>
   </section>
 </template>
 
@@ -68,9 +81,12 @@ import UserBrief from '@/components/common/UserBrief.vue';
 import { ItemStatus } from '@/constants/item';
 import { useAuth } from '@/hooks/useAuth';
 import { useItemStore } from '@/stores/itemStore';
+import { useOperationStore } from '@/stores/operationStore';
+import { formatDate } from '@/utils/formatters';
 
 const { currentUser, users, login, updateProfile } = useAuth();
 const itemStore = useItemStore();
+const operationStore = useOperationStore();
 const selectedUserId = ref('');
 
 const form = reactive({
@@ -101,6 +117,15 @@ watch(
 
 const myItems = computed(() => (currentUser.value ? itemStore.myItems(currentUser.value.id) : []));
 const availableCount = computed(() => myItems.value.filter((item) => item.status === ItemStatus.AVAILABLE).length);
+
+// 切换账号后，操作记录按最新会话重新读取对应用户作用域。
+watch(
+  () => currentUser.value?.id,
+  async (userId) => {
+    if (userId) await operationStore.hydrateFor(userId);
+  },
+  { immediate: true },
+);
 
 const save = async () => {
   await updateProfile({ ...form });

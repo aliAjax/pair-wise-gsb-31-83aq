@@ -61,14 +61,14 @@ const form = reactive({
   category: '数码',
   condition: ItemCondition.GOOD,
   images: [] as string[],
-  location: authStore.currentUser?.location ?? '上海 · 徐汇',
+  location: authStore.currentUser?.location ?? '',
   status: ItemStatus.AVAILABLE,
 });
 
 const submit = async () => {
-  if (!authStore.currentUser) return;
+  if (!authStore.sessionState) return;
   const item = await itemStore.publish({
-    user_id: authStore.currentUser.id,
+    user_id: authStore.sessionState.userId,
     title: form.title,
     description: form.description,
     category: form.category,

@@ -17,6 +17,14 @@
             {{ themeStore.token.label }}
           </button>
         </header>
+
+        <div v-if="migrationStore.hasFailed" class="migration-banner" role="alert">
+          <span>{{ AUTH_MESSAGES.migrationFailed }}<template v-if="migrationStore.errorText">：{{ migrationStore.errorText }}</template></span>
+          <button type="button" :disabled="migrationStore.running" @click="retryMigration">
+            {{ AUTH_MESSAGES.migrationRetry }}
+          </button>
+        </div>
+
         <main>
           <RouterView />
         </main>
@@ -26,25 +34,60 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted } from 'vue';
+import { computed, onMounted, watch } from 'vue';
 import { RouterLink, RouterView } from 'vue-router';
 import { ConfigProvider as VanConfigProvider } from 'vant';
 
 import GlobalErrorBoundary from '@/components/common/GlobalErrorBoundary';
+import { AUTH_MESSAGES } from '@/constants/messages';
+import { useSessionSync } from '@/hooks/useSessionSync';
 import { useAuthStore } from '@/stores/authStore';
 import { useExchangeStore } from '@/stores/exchangeStore';
 import { useItemStore } from '@/stores/itemStore';
+import { useMigrationStore } from '@/stores/migrationStore';
+import { useOperationStore } from '@/stores/operationStore';
 import { useThemeStore } from '@/stores/themeStore';
 import { toVantTheme } from '@/utils/themeUtils';
 
 const authStore = useAuthStore();
 const itemStore = useItemStore();
 const exchangeStore = useExchangeStore();
+const operationStore = useOperationStore();
+const migrationStore = useMigrationStore();
 const themeStore = useThemeStore();
 const vantTheme = computed(() => toVantTheme(themeStore.theme));
 
+useSessionSync();
+
+const reloadUserData = async () => {
+  await Promise.all([itemStore.hydrate(), exchangeStore.hydrate()]);
+  if (authStore.currentUser) {
+    await operationStore.hydrateFor(authStore.currentUser.id);
+  }
+};
+
 onMounted(async () => {
   themeStore.hydrate();
-  await Promise.all([authStore.hydrate(), itemStore.hydrate(), exchangeStore.hydrate()]);
+  await migrationStore.hydrate();
+  await authStore.hydrate();
+  await reloadUserData();
 });
+
+// 本标签页切换账号后，同样按最新会话重新读取各用户作用域数据。
+watch(
+  () => authStore.sessionState?.nonce,
+  async (nonce, previous) => {
+    if (nonce && nonce !== previous) {
+      await reloadUserData();
+    }
+  },
+);
+
+const retryMigration = async () => {
+  const result = await migrationStore.retry();
+  if (result.status === 'done') {
+    await authStore.hydrate();
+    await reloadUserData();
+  }
+};
 </script>
